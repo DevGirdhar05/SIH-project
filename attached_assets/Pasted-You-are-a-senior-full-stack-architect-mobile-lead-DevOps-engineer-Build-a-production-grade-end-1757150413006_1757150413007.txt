@@ -1,0 +1,316 @@
+You are a senior full-stack architect + mobile lead + DevOps engineer. Build a production-grade, end-to-end “Crowdsourced Civic Issue Reporting and Resolution System” for <City/Institution> suitable for Smart India Hackathon. Create ALL code, configs, docs, and assets as requested.
+
+############################
+# 0) PROJECT OVERVIEW
+############################
+Goal: A mobile-first platform for citizens to report civic issues (potholes, streetlights, garbage, waterlogging, encroachment…), track status, and enable authorities to triage, assign, and resolve with analytics.
+
+Three apps:
+1) Citizen Mobile App (Flutter preferred; React Native acceptable): Report with photo/video, GPS, category, description; track tickets; push notifications; multilingual; accessibility.
+2) Authority/Admin Web Dashboard (React + TypeScript): Map/table views, assignment, SLAs, bulk actions, analytics, CSV export, role-based access.
+3) Backend APIs + Worker Services: Node.js (NestJS or Express + TypeScript) with PostgreSQL via Prisma ORM; Redis for queues & rate limiting; object storage for media; OpenAPI docs; auth (JWT + optional OTP); WebSocket/SSE for live updates.
+
+Core features:
+- Report submission (photo/video, geotag, category, ward, description).
+- Auto-routing to departments by category/ward.
+- Status lifecycle: DRAFT → SUBMITTED → TRIAGED → ASSIGNED → IN_PROGRESS → PENDING_USER_INFO → RESOLVED → REJECTED.
+- Prioritization score (severity/severity rules + duplication detection + road class + crowdsignal volume).
+- Citizen updates + notifications (FCM).
+- Duplicate detection (perceptual image hash + geospatial clustering).
+- Map views (heatmap, cluster pins).
+- SLAs by category; escalation when breached.
+- Audited actions, comments, attachments.
+- Analytics: resolution time, backlog, ward/category heatmaps, worker productivity.
+- Offline-first (mobile), retry queue for uploads.
+- Accessibility (WCAG), localization (en + hi at minimum).
+
+############################
+# 1) TECH STACK & REASONS
+############################
+- Mobile: Flutter (Dart), null-safety, Riverpod or Bloc for state, intl for i18n, camera, image_picker, geolocator, google_maps_flutter (or Mapbox).
+- Web Admin: React 18 + TypeScript, Vite, React Router, TanStack Query, Zustand or Redux Toolkit, MUI or shadcn/ui + Tailwind, Mapbox GL or Google Maps JS.
+- Backend: Node.js 20, TypeScript, NestJS (preferred) or Express; Prisma ORM; PostgreSQL 15; Redis 7; BullMQ for jobs; Zod for validation; OpenAPI (Swagger).
+- Storage: S3-compatible (Cloudflare R2/MinIO) or Firebase Storage.
+- Auth: Email/password + OTP login via Firebase Auth or custom OTP (India: SMS gateway placeholder); JWT (access+refresh), RBAC (citizen, officer, supervisor, admin).
+- Notifications: FCM (mobile + web).
+- Geospatial: PostGIS; reverse geocoding via Mapbox/Google (abstract provider interface).
+- ML (optional bonus): TensorFlow Lite model in mobile for category suggestion; server-side image moderation; prioritization heuristic.
+- Observability: Sentry (front+back), Winston logs JSON, OpenTelemetry exporter.
+- CI/CD: GitHub Actions with build, test, lint, DB migrate; Docker images; deploy to <Render/Fly.io/AWS Lightsail> (specify).
+- IaC (optional): Terraform minimal stack, or docker-compose for local.
+
+############################
+# 2) REPO & FOLDER STRUCTURE
+############################
+Create a monorepo:
+
+/civic-platform
+  /apps
+    /mobile-flutter
+    /admin-web
+    /api-server
+    /worker
+  /packages
+    /ui (shared components if RN/React; optional)
+    /eslint-config
+    /typescript-config
+    /schemas (Zod/TypeScript shared types)
+  /infra
+    docker-compose.yml
+    /db (init.sql, seed.sql)
+    /terraform (optional)
+  /ops
+    k8s manifests (optional)
+    nginx.conf (if needed)
+  /docs
+    README.md (root, and per app)
+    ARCHITECTURE.md
+    SECURITY.md
+    API.md (link to auto-generated OpenAPI)
+    DEPLOYMENT.md
+    PRIVACY_POLICY.md
+    TERMS_OF_USE.md
+  .github/workflows/*.yml
+  .editorconfig
+  .gitignore
+  LICENSE (MIT)
+  Makefile
+  .env.example (root and per app)
+
+############################
+# 3) DOMAIN MODEL & DB SCHEMA (PostgreSQL + PostGIS)
+############################
+Use Prisma schema with PostGIS support (via raw SQL if needed).
+
+Entities:
+- User(id, role: CITIZEN|OFFICER|SUPERVISOR|ADMIN, name, phone, email, locale, wardId?, fcmToken?, createdAt, updatedAt, isActive)
+- Department(id, name, code, email, phone)
+- Ward(id, name, code, geojson)  // polygon for ward boundaries
+- Category(id, name, code, slaHours, priorityWeight)
+- Issue(id, ticketNo, title, description, categoryId, wardId, deptId, reporterId, assigneeId?, status, priorityScore, location(geo POINT), address, imageUrls[], videoUrls[], createdAt, updatedAt, resolvedAt?, rejectedReason?, duplicateOfIssueId?)
+- IssueEvent(id, issueId, actorId, type (STATUS_CHANGE|COMMENT|ASSIGN|ESCALATE|MERGE_DUPLICATE), payload JSON, createdAt)
+- Comment(id, issueId, authorId, body, attachments[])
+- Attachment(id, issueId, url, type, size, hash)
+- SLA_Breach(id, issueId, breachedAt, resolvedAt?, escalatedToUserId?)
+- Notification(id, recipientId, type, payload JSON, isRead, createdAt)
+- APIKey(id, ownerUserId, keyHash, scopes[], createdAt)
+
+Add indices:
+- GIST index on Issue.location
+- BTREE on Issue.status, categoryId, wardId, deptId, priorityScore
+- Unique ticketNo
+- trigram index on Issue.title for search (pg_trgm)
+
+Seed data:
+- Wards: 10 sample wards with simple polygons
+- Departments: Roads, Electricity, Sanitation, Water, Parks
+- Categories: pothole, streetlight_out, garbage_overflow, water_leakage, tree_fall etc. with SLA hours
+
+############################
+# 4) ISSUE LIFECYCLE & BUSINESS LOGIC
+############################
+Statuses: DRAFT → SUBMITTED → TRIAGED → ASSIGNED → IN_PROGRESS → PENDING_USER_INFO → RESOLVED → REJECTED
+Rules:
+- On SUBMITTED: auto-assign dept via Category→Department mapping and ward detection via point-in-polygon.
+- TRIAGED: officer sets priorityScore, merges duplicates if found.
+- ASSIGNED: assign to worker/officer; notify.
+- SLA timers: based on Category.slaHours; create SLA_Breach if exceeded; auto-escalate to supervisor.
+- Duplicate detection: pHash on images + geocluster (DBSCAN/EPS=50m); if high similarity & close in time/location → suggest merge.
+- PriorityScore heuristic: category.priorityWeight + (road_class_weight if available) + (#reports_nearby in last 7 days) + (proximity to critical POIs like hospitals/schools configurable).
+
+############################
+# 5) API DESIGN (REST + WebSocket)
+############################
+Generate OpenAPI 3.0 + Swagger UI at /docs.
+
+Auth:
+- POST /auth/register (citizen), /auth/login (email+password or phone+OTP), /auth/refresh, /auth/logout
+- Roles & RBAC middleware (JWT). Include sample policies.
+
+Citizen endpoints:
+- POST /issues (multipart: photos/videos, location(lat,lng), categoryId, description) → returns ticketNo
+- GET /issues/my?page=&status=
+- GET /issues/:ticketNo
+- PATCH /issues/:id (allow edit if status in DRAFT/PENDING_USER_INFO and same reporter)
+- POST /issues/:id/comments
+- WS/SSE /realtime for status updates
+
+Admin/Officer:
+- GET /admin/issues?status=&categoryId=&wardId=&deptId=&sort=&q=
+- GET /admin/issues/map?bbox=... (clustered)
+- PATCH /admin/issues/:id/status
+- PATCH /admin/issues/:id/assign {assigneeId}
+- POST /admin/issues/:id/merge {duplicateOfIssueId}
+- GET /admin/analytics/overview (cards + timeseries)
+- GET /admin/export.csv
+
+Utilities:
+- POST /media/upload (signed URLs) + S3 direct uploads
+- GET /catalog/categories, /catalog/wards, /catalog/departments
+
+Validation: Zod or class-validator DTOs. Return consistent error shape {code, message, details}. Pagination: cursor or page/limit.
+
+############################
+# 6) FRONTEND – MOBILE (FLUTTER)
+############################
+Deliverables:
+- Clean architecture: /lib/features/* with presentation/domain/data layers.
+- Routing with go_router.
+- State management with Riverpod.
+- Screens:
+  1. Onboarding + permissions (location, camera, notifications).
+  2. Home: “Report an Issue”, map section with nearby issues.
+  3. Report Flow: capture/upload media (compress), auto-GPS (reverse geocode), pick category, description, ward read-only, preview & submit.
+  4. My Issues list + filters; detail view with timeline & comments; add comment/photo.
+  5. Settings: language switch (en/hi), profile, logout.
+  6. Offline mode: queue unsent reports; retry with backoff.
+- i18n: intl ARB files for en & hi, date/number formats.
+- Accessibility: large text support, semantics labels, color-contrast.
+- Error states/empty states/loading skeletons.
+
+############################
+# 7) FRONTEND – ADMIN WEB (REACT + TS)
+############################
+Deliverables:
+- Vite + TS, ESLint/Prettier, absolute imports, env handling.
+- Auth pages (login), RBAC route guards.
+- Layout with sidebar (Issues, Map, Analytics, Departments, Users, Settings).
+- Issues Table: server-side filters, bulk actions, column chooser, CSV export.
+- Map View: clustering, filter by status/category/ward/time; click pin → drawer with details and actions.
+- Issue Detail: timeline, comments, attachments, status changes, SLA badge, duplicate suggestions.
+- Assignment modal, escalation actions, merge duplicate flow.
+- Analytics: charts (resolution time, backlog trend, heatmap by ward, category split).
+- FCM web notifications; toasts; dark mode toggle.
+
+############################
+# 8) SECURITY, PRIVACY, COMPLIANCE
+############################
+- JWT with rotation; refresh token httpOnly cookie (web).
+- Password hashing (argon2id).
+- Rate limiting (per-IP + per-user) with Redis.
+- Input validation & sanitization; content moderation hook (placeholder).
+- Signed URLs for media; private bucket by default.
+- PII minimization: store only necessary personal data.
+- Audit logging for admin actions.
+- SECURITY.md with threat model & mitigations.
+- GDPR-like data export/delete for user (endpoint + UI).
+
+############################
+# 9) TESTING & QUALITY
+############################
+- Unit tests: backend services, utils (Jest).
+- Integration tests: API against test DB (Supertest) with docker-compose.
+- E2E:
+  - Mobile: Flutter integration_test for main flows.
+  - Web admin: Playwright scripts (login, filter, assign, resolve).
+- Contract tests from OpenAPI (ensure request/response conformity).
+- Lint, typecheck, pre-commit hooks (lint-staged + husky).
+- Code coverage badges in README.
+
+############################
+# 10) CI/CD & DEPLOYMENT
+############################
+GitHub Actions:
+- Workflow 1: PR – install, lint, test (all apps), build.
+- Workflow 2: Main – build Docker images for api-server and admin-web, push to registry; run DB migrate; deploy to <Render/Fly.io>.
+- Mobile build: produce Android .apk/.aab artifact.
+- Cache node_modules and Flutter SDK.
+
+Deployment targets:
+- Postgres + PostGIS service.
+- Redis.
+- S3-compatible storage (R2/MinIO).
+- Nginx reverse proxy (optional).
+- Environment variables via .env; provide .env.example (root & per app).
+
+############################
+# 11) CONFIG & ENV
+############################
+Create .env.example for each app covering:
+- API_BASE_URL, WEBSOCKET_URL
+- DATABASE_URL (Postgres)
+- REDIS_URL
+- STORAGE_S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY, S3_SECRET
+- JWT_SECRET, JWT_REFRESH_SECRET, TOKEN_TTLS
+- FCM_SERVER_KEY, FCM_WEB_VAPID_KEY
+- MAPS_PROVIDER=google|mapbox, MAPS_API_KEY
+- SENTRY_DSN
+- GEOCODING_PROVIDER + API KEY
+
+############################
+# 12) ANALYTICS & OBSERVABILITY
+############################
+- Sentry initialization (front+back) with release tagging & source maps.
+- Request/response logging (masked PII).
+- Health checks: /health (db, redis, storage).
+- Metrics endpoint (Prometheus format) optional.
+
+############################
+# 13) DOCUMENTATION & ARTIFACTS
+############################
+Generate and include:
+- README.md (root) with quickstart.
+- ARCHITECTURE.md (diagrams as Mermaid + PNGs): context, component, sequence (report flow, SLA escalation, duplicate merge).
+- API docs: Swagger JSON + HTML; export Postman collection.
+- DEPLOYMENT.md: local (docker-compose) and cloud steps.
+- PRIVACY_POLICY.md and TERMS_OF_USE.md templates adapted to civic app.
+- CONTRIBUTING.md with Conventional Commits.
+- SCREENSHOTS/ wireframes for key screens (basic Figma-like PNGs okay).
+
+############################
+# 14) SAMPLE DATA & SEEDING
+############################
+- 10 wards (sample polygons), 5 departments, 12 categories with SLA hours.
+- 50 sample issues randomly placed with realistic statuses/dates for demo analytics.
+- 1 admin, 3 officers, 10 citizens accounts with known passwords.
+- Provide scripts: `pnpm seed` or `npm run seed`.
+
+############################
+# 15) ACCESSIBILITY, I18N, LOCALIZATION
+############################
+- English + Hindi resources.
+- All interactive elements keyboard accessible; ARIA labels.
+- Color-blind safe charts; focus styles visible.
+
+############################
+# 16) ERROR STATES & EDGE CASES
+############################
+- Media upload retry & background uploads on mobile.
+- GPS disabled: allow manual map pin; warn user.
+- Network offline: queue report; show banner; auto-retry.
+- Large media: compress to < 2MB images, <30s video.
+- Duplicate submission guard: temporary local hash.
+
+############################
+# 17) OUTPUT REQUIREMENTS
+############################
+Produce the following in your response:
+1) The full monorepo file tree (folders + key files).
+2) Full code for:
+   - Backend (NestJS/Express) with Prisma schema, migrations, services, controllers, guards, BullMQ queues, S3 client, FCM service, geocoding provider, duplicate detector (pHash), priority scorer, SLA scheduler.
+   - Worker service (queues: media-processing, duplicate-check, sla-escalation, notifications).
+   - Admin web app (React+TS): pages, components, hooks, services, theming.
+   - Mobile Flutter app: complete lib/ with screens, state, services, models, localization, assets.
+3) Dockerfiles for api-server, worker, admin-web; docker-compose.yml for local stack (postgres+postgis, redis, minio/s3, api, worker, admin, nginx).
+4) OpenAPI 3.0 YAML/JSON and a generated Postman collection.
+5) GitHub Actions YAML workflows.
+6) Seed scripts and sample data.
+7) All README/docs listed above.
+8) A short “DEMO SCRIPT.md” describing how to demo in 5–7 minutes (SIH-style).
+
+############################
+# 18) QUALITY BAR
+############################
+- Clean, well-commented, production-ready code.
+- Strong typing; no any leaks.
+- Handle errors gracefully with unified error shape.
+- Don’t hardcode secrets; read from env.
+- Include meaningful unit and integration tests.
+- Keep UI modern, responsive, and simple.
+
+############################
+# 19) BRANDING (OPTIONAL)
+############################
+Name app “CivicConnect” unless <CustomName> provided. Use neutral colors and Indian city imagery placeholders.
+
+BEGIN NOW. Generate everything deterministically. If a choice is ambiguous, pick the most standard, production-ready default.
