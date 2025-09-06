@@ -1,0 +1,120 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(210, 20%, 98%);
+  --foreground: hsl(210, 20%, 15%);
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(210, 20%, 15%);
+  --popover: hsl(0, 0%, 100%);
+  --popover-foreground: hsl(210, 20%, 15%);
+  --primary: hsl(210, 80%, 42%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(38, 92%, 50%);
+  --secondary-foreground: hsl(0, 0%, 100%);
+  --muted: hsl(210, 20%, 96%);
+  --muted-foreground: hsl(210, 20%, 45%);
+  --accent: hsl(210, 20%, 92%);
+  --accent-foreground: hsl(210, 20%, 15%);
+  --destructive: hsl(0, 65%, 48%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --border: hsl(210, 20%, 89%);
+  --input: hsl(210, 20%, 89%);
+  --ring: hsl(210, 80%, 42%);
+  --success: hsl(120, 45%, 35%);
+  --warning: hsl(28, 84%, 48%);
+  --radius: 8px;
+
+  /* Chart colors */
+  --chart-1: hsl(210, 80%, 42%);
+  --chart-2: hsl(120, 45%, 35%);
+  --chart-3: hsl(38, 92%, 50%);
+  --chart-4: hsl(28, 84%, 48%);
+  --chart-5: hsl(0, 65%, 48%);
+
+  /* Sidebar */
+  --sidebar-background: hsl(0, 0%, 100%);
+  --sidebar-foreground: hsl(210, 20%, 15%);
+  --sidebar-primary: hsl(210, 80%, 42%);
+  --sidebar-primary-foreground: hsl(0, 0%, 100%);
+  --sidebar-accent: hsl(210, 20%, 92%);
+  --sidebar-accent-foreground: hsl(210, 20%, 15%);
+  --sidebar-border: hsl(210, 20%, 89%);
+  --sidebar-ring: hsl(210, 80%, 42%);
+
+  /* Font */
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: Menlo, monospace;
+}
+
+.dark {
+  --background: hsl(0, 0%, 0%);
+  --foreground: hsl(200, 6.6667%, 91.1765%);
+  --card: hsl(228, 9.8039%, 10%);
+  --card-foreground: hsl(0, 0%, 85.0980%);
+  --popover: hsl(0, 0%, 0%);
+  --popover-foreground: hsl(200, 6.6667%, 91.1765%);
+  --primary: hsl(210, 80%, 42%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --secondary: hsl(38, 92%, 50%);
+  --secondary-foreground: hsl(0, 0%, 100%);
+  --muted: hsl(0, 0%, 9.4118%);
+  --muted-foreground: hsl(210, 3.3898%, 46.2745%);
+  --accent: hsl(205.7143, 70%, 7.8431%);
+  --accent-foreground: hsl(210, 80%, 42%);
+  --destructive: hsl(0, 65%, 48%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --border: hsl(210, 5.2632%, 14.9020%);
+  --input: hsl(207.6923, 27.6596%, 18.4314%);
+  --ring: hsl(210, 80%, 42%);
+  --success: hsl(120, 45%, 35%);
+  --warning: hsl(28, 84%, 48%);
+
+  --sidebar-background: hsl(228, 9.8039%, 10%);
+  --sidebar-foreground: hsl(0, 0%, 85.0980%);
+  --sidebar-primary: hsl(210, 80%, 42%);
+  --sidebar-primary-foreground: hsl(0, 0%, 100%);
+  --sidebar-accent: hsl(205.7143, 70%, 7.8431%);
+  --sidebar-accent-foreground: hsl(210, 80%, 42%);
+  --sidebar-border: hsl(205.7143, 15.7895%, 26.0784%);
+  --sidebar-ring: hsl(210, 80%, 42%);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    @apply bg-background text-foreground antialiased;
+  }
+
+  /* Custom status badge styles */
+  .status-submitted { @apply bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400; }
+  .status-triaged { @apply bg-purple-100 text-purple-800 dark:bg-purple-900/20 dark:text-purple-400; }
+  .status-assigned { @apply bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400; }
+  .status-in-progress { @apply bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400; }
+  .status-pending-user-info { @apply bg-cyan-100 text-cyan-800 dark:bg-cyan-900/20 dark:text-cyan-400; }
+  .status-resolved { @apply bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400; }
+  .status-rejected { @apply bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400; }
+
+  /* Priority indicators */
+  .priority-high { @apply border-l-4 border-red-500; }
+  .priority-medium { @apply border-l-4 border-yellow-500; }
+  .priority-low { @apply border-l-4 border-green-500; }
+  .priority-critical { @apply border-l-4 border-red-700; }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary text-primary-foreground hover:bg-primary hover:opacity-90 transition-colors;
+  }
+
+  .btn-secondary {
+    @apply bg-secondary text-secondary-foreground hover:bg-secondary hover:opacity-90 transition-colors;
+  }
+}
