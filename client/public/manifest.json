@@ -1,0 +1,46 @@
+{
+  "name": "CivicConnect - Civic Issue Reporting",
+  "short_name": "CivicConnect",
+  "description": "Report and track civic issues in your community",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "32x32",
+      "type": "image/x-icon"
+    }
+  ],
+  "categories": ["government", "utilities", "lifestyle"],
+  "lang": "en",
+  "scope": "/",
+  "shortcuts": [
+    {
+      "name": "Report Issue",
+      "short_name": "Report",
+      "description": "Report a new civic issue",
+      "url": "/report-issue",
+      "icons": [
+        {
+          "src": "/favicon.ico",
+          "sizes": "32x32"
+        }
+      ]
+    },
+    {
+      "name": "My Issues",
+      "short_name": "My Issues",
+      "description": "View your reported issues",
+      "url": "/my-issues",
+      "icons": [
+        {
+          "src": "/favicon.ico",
+          "sizes": "32x32"
+        }
+      ]
+    }
+  ]
+}

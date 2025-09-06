@@ -5,6 +5,7 @@ import { authService } from "./services/auth";
 import { authMiddleware, requireRole } from "./middleware/auth";
 import { fileUploadService } from "./services/file-upload";
 import { geolocationService } from "./services/geolocation";
+import { webSocketService } from "./services/websocket";
 import multer from "multer";
 import { z } from "zod";
 import { insertIssueSchema, insertCommentSchema, insertUserSchema } from "@shared/schema";
@@ -201,6 +202,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         payload: { oldStatus: 'DRAFT', newStatus: 'SUBMITTED' }
       });
 
+      // Send real-time notification
+      webSocketService.notifyNewIssue(issue);
+
       res.status(201).json(issue);
     } catch (error) {
       res.status(400).json({ 
@@ -337,6 +341,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         type: 'STATUS_CHANGE',
         payload: { oldStatus: currentIssue.status, newStatus: status, rejectedReason }
       });
+
+      // Send real-time notification
+      webSocketService.notifyIssueUpdate(updatedIssue, currentIssue.status, status);
 
       res.json(updatedIssue);
     } catch (error) {
