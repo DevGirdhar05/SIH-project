@@ -6,6 +6,7 @@ import { authMiddleware, requireRole } from "./middleware/auth";
 import { fileUploadService } from "./services/file-upload";
 import { geolocationService } from "./services/geolocation";
 import { webSocketService } from "./services/websocket";
+import { emailService } from "./services/email";
 import multer from "multer";
 import { z } from "zod";
 import { insertIssueSchema, insertCommentSchema, insertUserSchema } from "@shared/schema";

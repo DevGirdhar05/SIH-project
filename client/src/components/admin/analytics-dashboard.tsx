@@ -1,207 +1,116 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiClient } from "../../lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { CheckCircle, Clock, AlertTriangle, TrendingUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { KPICards } from '../analytics/kpi-cards';
+import { IssueTrendsChart } from '../analytics/issue-trends-chart';
+import { CategoryDistribution } from '../analytics/category-distribution';
+import { ResolutionTimeChart } from '../analytics/resolution-time-chart';
+import { Download, RefreshCw } from 'lucide-react';
 
 export default function AnalyticsDashboard() {
-  const { data: stats, isLoading } = useQuery({
-    queryKey: ['/api/admin/analytics/overview'],
-    queryFn: () => apiClient.getAnalytics(),
+  const { data: analytics, isLoading, refetch } = useQuery({
+    queryKey: ['/api/analytics'],
+    refetchInterval: 30000, // Refresh every 30 seconds
   });
+
+  const handleExport = () => {
+    if (!analytics) return;
+    
+    const csvData = [
+      ['Metric', 'Value'],
+      ['Total Issues', analytics.kpis.totalIssues],
+      ['Resolved Issues', analytics.kpis.resolvedIssues],
+      ['Pending Issues', analytics.kpis.pendingIssues],
+      ['Resolution Rate', `${analytics.kpis.resolutionRate.toFixed(1)}%`],
+      ['Average Resolution Time (hours)', analytics.kpis.avgResolutionTime],
+      ['Active Users', analytics.kpis.activeUsers],
+    ];
+    
+    const csvContent = csvData.map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `civic-connect-analytics-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {[1, 2, 3, 4].map((i) => (
-          <Card key={i} className="border border-border">
-            <CardContent className="p-6">
-              <div className="animate-pulse space-y-4">
-                <div className="h-4 bg-muted rounded w-1/2"></div>
-                <div className="h-8 bg-muted rounded w-1/3"></div>
-                <div className="space-y-2">
-                  <div className="h-2 bg-muted rounded"></div>
-                  <div className="h-2 bg-muted rounded w-2/3"></div>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-bold">Analytics Dashboard</h2>
+          <div className="flex gap-2">
+            <Button variant="outline" disabled>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh
+            </Button>
+            <Button variant="outline" disabled>
+              <Download className="mr-2 h-4 w-4" />
+              Export
+            </Button>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i}>
+              <CardContent className="p-6">
+                <div className="animate-pulse space-y-4">
+                  <div className="h-4 bg-muted rounded w-1/2"></div>
+                  <div className="h-8 bg-muted rounded w-1/3"></div>
+                  <div className="space-y-2">
+                    <div className="h-2 bg-muted rounded"></div>
+                    <div className="h-2 bg-muted rounded w-2/3"></div>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     );
   }
 
-  const statsCards = [
-    {
-      title: "Critical Issues",
-      value: stats?.byStatus?.SUBMITTED || 0,
-      icon: AlertTriangle,
-      color: "text-red-600",
-      bgColor: "bg-red-50",
-    },
-    {
-      title: "Pending Review",
-      value: stats?.byStatus?.TRIAGED || 0,
-      icon: Clock,
-      color: "text-orange-600",
-      bgColor: "bg-orange-50",
-    },
-    {
-      title: "In Progress",
-      value: stats?.byStatus?.IN_PROGRESS || 0,
-      icon: TrendingUp,
-      color: "text-blue-600",
-      bgColor: "bg-blue-50",
-    },
-    {
-      title: "Resolved Today",
-      value: stats?.byStatus?.RESOLVED || 0,
-      icon: CheckCircle,
-      color: "text-green-600",
-      bgColor: "bg-green-50",
-    },
-  ];
-
-  const categoryData = Object.entries(stats?.byCategory || {});
-  const wardData = Object.entries(stats?.byWard || {});
+  if (!analytics) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-muted-foreground">Failed to load analytics data</p>
+        <Button variant="outline" onClick={() => refetch()} className="mt-4">
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Try Again
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {statsCards.map((stat, index) => (
-          <Card key={index} className="border border-border" data-testid={`card-stat-${stat.title.toLowerCase().replace(/\s+/g, '-')}`}>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-2xl font-bold text-foreground" data-testid={`text-stat-value-${index}`}>
-                    {stat.value.toLocaleString()}
-                  </p>
-                  <p className="text-sm text-muted-foreground">{stat.title}</p>
-                </div>
-                <div className={`p-3 rounded-full ${stat.bgColor} dark:bg-opacity-20`}>
-                  <stat.icon className={`h-6 w-6 ${stat.color}`} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">Analytics Dashboard</h2>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => refetch()} data-testid="button-refresh-analytics">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+          <Button variant="outline" onClick={handleExport} data-testid="button-export-analytics">
+            <Download className="mr-2 h-4 w-4" />
+            Export
+          </Button>
+        </div>
       </div>
 
+      {/* KPI Cards */}
+      <KPICards data={analytics.kpis} />
+
+      {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Resolution Times Chart */}
-        <Card className="border border-border">
-          <CardHeader>
-            <CardTitle>Average Resolution Times</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4" data-testid="resolution-times-chart">
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Potholes</span>
-                <div className="flex items-center space-x-2">
-                  <Progress value={75} className="w-32" />
-                  <span className="text-sm text-muted-foreground">7.2 days</span>
-                </div>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Street Lights</span>
-                <div className="flex items-center space-x-2">
-                  <Progress value={45} className="w-32" />
-                  <span className="text-sm text-muted-foreground">2.1 days</span>
-                </div>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Garbage</span>
-                <div className="flex items-center space-x-2">
-                  <Progress value={30} className="w-32" />
-                  <span className="text-sm text-muted-foreground">1.3 days</span>
-                </div>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Water Issues</span>
-                <div className="flex items-center space-x-2">
-                  <Progress value={90} className="w-32" />
-                  <span className="text-sm text-muted-foreground">9.8 days</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <IssueTrendsChart data={analytics.trendData} />
+        <CategoryDistribution data={analytics.categoryDistribution} />
+      </div>
 
-        {/* Issue Volume by Ward */}
-        <Card className="border border-border">
-          <CardHeader>
-            <CardTitle>Issues by Ward (Last 30 Days)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3" data-testid="ward-stats">
-              {wardData.slice(0, 5).map(([ward, count], index) => (
-                <div key={ward} className="flex justify-between items-center">
-                  <span className="text-sm">{ward}</span>
-                  <span className="text-sm font-medium" data-testid={`ward-count-${index}`}>
-                    {count as number} issues
-                  </span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* SLA Performance */}
-        <Card className="border border-border">
-          <CardHeader>
-            <CardTitle>SLA Performance</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-green-600 mb-2" data-testid="sla-compliance-rate">
-                  95%
-                </div>
-                <p className="text-sm text-muted-foreground">Overall SLA Compliance</p>
-              </div>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Within SLA</span>
-                  <span className="text-green-600" data-testid="sla-within-count">
-                    {stats?.byStatus?.RESOLVED || 0} issues
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>Breached SLA</span>
-                  <span className="text-red-600" data-testid="sla-breached-count">
-                    {Math.floor((stats?.total || 0) * 0.05)} issues
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>Critical Overdue</span>
-                  <span className="text-red-600 font-medium" data-testid="sla-critical-count">
-                    {Math.floor((stats?.total || 0) * 0.01)} issues
-                  </span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Category Breakdown */}
-        <Card className="border border-border">
-          <CardHeader>
-            <CardTitle>Issues by Category</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3" data-testid="category-stats">
-              {categoryData.slice(0, 5).map(([category, count], index) => (
-                <div key={category} className="flex justify-between items-center">
-                  <span className="text-sm">{category}</span>
-                  <span className="text-sm font-medium" data-testid={`category-count-${index}`}>
-                    {count as number} issues
-                  </span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 gap-6">
+        <ResolutionTimeChart data={analytics.resolutionTimeByCategory} />
       </div>
     </div>
   );
