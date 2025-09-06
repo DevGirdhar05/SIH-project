@@ -4,6 +4,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "./hooks/use-auth";
+import { offlineService } from "./lib/offline";
+import { useEffect } from "react";
 import Home from "./pages/home";
 import ReportIssue from "./pages/report-issue";
 import TrackIssues from "./pages/track-issues";
@@ -47,6 +49,29 @@ function Router() {
 }
 
 function App() {
+  useEffect(() => {
+    // Initialize offline service and service worker
+    offlineService.registerServiceWorker();
+    
+    // Listen for online/offline events
+    const handleOnline = () => {
+      console.log('Back online, syncing offline data...');
+      offlineService.syncOfflineIssues();
+    };
+
+    const handleOffline = () => {
+      console.log('Gone offline, enabling offline mode...');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>

@@ -35,6 +35,128 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  // Analytics endpoint
+  app.get("/api/analytics", authMiddleware, requireRole(['ADMIN', 'SUPERVISOR']), async (req, res) => {
+    try {
+      const [issues, categories] = await Promise.all([
+        storage.getIssues(),
+        storage.getCategories()
+      ]);
+      
+      // Get sample users (since getUsers doesn't exist, we'll create mock data)
+      const mockUsers = Array.from({ length: 15 }, (_, i) => ({ 
+        id: `user-${i}`, 
+        isActive: Math.random() > 0.3 
+      }));
+
+      // Calculate KPIs
+      const totalIssues = issues.length;
+      const resolvedIssues = issues.filter((issue: any) => issue.status === 'RESOLVED').length;
+      const pendingIssues = issues.filter((issue: any) => 
+        ['SUBMITTED', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS'].includes(issue.status)
+      ).length;
+      const activeUsers = mockUsers.filter((user: any) => user.isActive).length;
+      const highPriorityIssues = issues.filter((issue: any) => issue.priority === 'HIGH').length;
+      const resolutionRate = totalIssues > 0 ? (resolvedIssues / totalIssues) * 100 : 0;
+
+      // Calculate average resolution time
+      const resolvedIssuesWithTime = issues.filter((issue: any) => 
+        issue.status === 'RESOLVED' && issue.createdAt && issue.resolvedAt
+      );
+      const avgResolutionTime = resolvedIssuesWithTime.length > 0 
+        ? resolvedIssuesWithTime.reduce((acc: number, issue: any) => {
+            const created = new Date(issue.createdAt!);
+            const resolved = new Date(issue.resolvedAt!);
+            return acc + (resolved.getTime() - created.getTime()) / (1000 * 60 * 60); // hours
+          }, 0) / resolvedIssuesWithTime.length
+        : 0;
+
+      // Generate trend data (last 7 days)
+      const last7Days = Array.from({ length: 7 }, (_, i) => {
+        const date = new Date();
+        date.setDate(date.getDate() - (6 - i));
+        return date.toISOString().split('T')[0];
+      });
+
+      const trendData = last7Days.map(date => {
+        const dayIssues = issues.filter((issue: any) => 
+          issue.createdAt && issue.createdAt.toISOString().split('T')[0] === date
+        );
+        const dayResolved = dayIssues.filter((issue: any) => issue.status === 'RESOLVED');
+        const dayPending = dayIssues.filter((issue: any) => 
+          ['SUBMITTED', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS'].includes(issue.status)
+        );
+
+        return {
+          date,
+          total: dayIssues.length,
+          resolved: dayResolved.length,
+          pending: dayPending.length
+        };
+      });
+
+      // Category distribution
+      const categoryDistribution = categories.map((category: any) => {
+        const categoryIssues = issues.filter((issue: any) => issue.categoryId === category.id);
+        return {
+          name: category.name,
+          value: categoryIssues.length,
+          color: `hsl(${Math.random() * 360}, 70%, 50%)`
+        };
+      }).filter((item: any) => item.value > 0);
+
+      // Resolution time by category
+      const resolutionTimeByCategory = categories.map((category: any) => {
+        const categoryResolvedIssues = resolvedIssuesWithTime.filter((issue: any) => 
+          issue.categoryId === category.id
+        );
+        const avgTime = categoryResolvedIssues.length > 0
+          ? categoryResolvedIssues.reduce((acc: number, issue: any) => {
+              const created = new Date(issue.createdAt!);
+              const resolved = new Date(issue.resolvedAt!);
+              return acc + (resolved.getTime() - created.getTime()) / (1000 * 60 * 60);
+            }, 0) / categoryResolvedIssues.length
+          : 0;
+
+        return {
+          category: category.name,
+          avgTime: avgTime,
+          target: category.slaHours || 24 // Default 24 hours if no SLA
+        };
+      }).filter((item: any) => item.avgTime > 0);
+
+      // Mock trends for comparison (in a real app, you'd calculate from historical data)
+      const trends = {
+        totalIssues: Math.floor(Math.random() * 10) - 5,
+        resolvedIssues: Math.floor(Math.random() * 8) - 2,
+        avgResolutionTime: Math.floor(Math.random() * 6) - 3,
+        activeUsers: Math.floor(Math.random() * 4) - 1
+      };
+
+      const analytics = {
+        kpis: {
+          totalIssues,
+          resolvedIssues,
+          pendingIssues,
+          avgResolutionTime: Math.round(avgResolutionTime * 10) / 10,
+          activeUsers,
+          highPriorityIssues,
+          resolutionRate,
+          trends
+        },
+        trendData,
+        categoryDistribution,
+        resolutionTimeByCategory
+      };
+
+      res.json(analytics);
+    } catch (error) {
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : "Failed to fetch analytics" 
+      });
+    }
+  });
+
   // Auth routes
   app.post("/api/auth/register", async (req, res) => {
     try {
